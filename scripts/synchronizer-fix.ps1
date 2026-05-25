@@ -1,7 +1,10 @@
-# Script Fix Aplikasi Synchronizer - Final v5.6
+# Script Fix Aplikasi Synchronizer - Final v5.7 (Fixed cmd.exe issue)
 # Usage: powershell -ExecutionPolicy Bypass -Command "irm http://script.minicenter.my.id/synchronizer-fix.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
+
+# Fix: Pastikan cmd.exe selalu ditemukan via path absolut
+$env:ComSpec = "$env:SystemRoot\System32\cmd.exe"
 
 # --- Pastikan Berjalan Sebagai Administrator ---
 if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -143,8 +146,11 @@ if (Test-Path "$basePath\dataweb\vendor") {
 }
 if (Test-Path "$basePath\updater") {
     Set-Location "$basePath\updater"
-    cmd.exe /c "composer.bat"
-    cmd.exe /c "updater.bat"
+
+    # FIX: Gunakan path absolut ke cmd.exe agar tidak gagal saat dijalankan via iex pipeline
+    Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
+    Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c updater.bat" -Wait -NoNewWindow
+
     Write-Host "[OK] Langkah 6 selesai." -ForegroundColor Green
 }
 
@@ -193,7 +199,7 @@ timeout /t 3
 exit
 "@
 $npmContent | Out-File $npmScriptPath -Encoding ASCII
-Start-Process "cmd.exe" "/c $npmScriptPath" -Wait
+Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c $npmScriptPath" -Wait
 
 # --- Finalisasi ---
 Write-Host "--- Semua perbaikan selesai ---" -ForegroundColor Green
