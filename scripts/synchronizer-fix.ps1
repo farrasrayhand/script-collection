@@ -1,4 +1,4 @@
-# Script Fix Aplikasi Synchronizer - Final v5.7 (Fixed cmd.exe issue)
+# Script Fix Aplikasi Synchronizer - Final v5.7 (Fixed cmd.exe issue + Auto Elevation)
 # Usage: powershell -ExecutionPolicy Bypass -Command "irm http://script.minicenter.my.id/synchronizer-fix.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
@@ -6,11 +6,26 @@ $ErrorActionPreference = "Stop"
 # Fix: Pastikan cmd.exe selalu ditemukan via path absolut
 $env:ComSpec = "$env:SystemRoot\System32\cmd.exe"
 
-# --- Pastikan Berjalan Sebagai Administrator ---
-if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: Harap jalankan PowerShell sebagai Administrator!" -ForegroundColor Red
+# --- Auto Self-Elevation ke Administrator ---
+$currentPrincipal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+    Write-Host "Bukan Administrator. Melakukan elevasi otomatis..." -ForegroundColor Yellow
+
+    # Jika dijalankan via irm | iex (pipeline), tidak ada file path — dump ke temp file dulu
+    if (-not $MyInvocation.MyCommand.Path) {
+        $tempScript = "$env:TEMP\synchronizer-fix-temp.ps1"
+        $MyInvocation.MyCommand.ScriptBlock | Out-File -FilePath $tempScript -Encoding UTF8
+        $scriptPath = $tempScript
+    } else {
+        $scriptPath = $MyInvocation.MyCommand.Path
+    }
+
+    Start-Process PowerShell -Verb RunAs -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" -Wait
     exit
 }
+
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
 # Fungsi untuk memperbarui Environment Path secara instan
