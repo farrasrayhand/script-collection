@@ -1,8 +1,116 @@
-# Script Fix Aplikasi Synchronizer - Final v5.7 (Animated Edition)
-# Usage: powershell -ExecutionPolicy Bypass -Command "irm http://script.minicenter.my.id/synchronizer-fix.ps1 | iex"
+# Script Fix Aplikasi Synchronizer - Final v5.7 (Animated Edition - Unicode Auto-Detect)
+# Usage: powershell -ExecutionPolicy Bypass -Command "irm http://script.minicenter.my.id/scripts/synchronizer-fix.ps1 | iex"
 
 $ErrorActionPreference = "Stop"
 $env:ComSpec = "$env:SystemRoot\System32\cmd.exe"
+
+# =============================================
+# DETEKSI UNICODE SUPPORT
+# =============================================
+
+function Test-UnicodeSupport {
+    # Cek 1: Apakah terminal bisa render Unicode (Windows Terminal, VS Code, dll)
+    $wtSession   = $env:WT_SESSION        # Windows Terminal
+    $vscode      = $env:TERM_PROGRAM      # VS Code terminal
+    $conEmu      = $env:ConEmuPID         # ConEmu / Cmder
+
+    if ($wtSession -or $vscode -or $conEmu) { return $true }
+
+    # Cek 2: PowerShell ISE
+    if ($host.Name -eq "Windows PowerShell ISE Host") { return $true }
+
+    # Cek 3: Font terminal support Powerline/Unicode (Consolas, Cascadia, dll)
+    try {
+        $fontName = (Get-ItemProperty "HKCU:\Console").FaceName 2>$null
+        $unicodeFonts = @("Cascadia", "Nerd Font", "FiraCode", "JetBrains", "Lucida Console", "NSimSun", "MS Gothic")
+        foreach ($f in $unicodeFonts) {
+            if ($fontName -like "*$f*") { return $true }
+        }
+    } catch {}
+
+    # Cek 4: Test tulis karakter Unicode dan baca kembali — kalau tidak error, support
+    try {
+        $testChar = [char]0x2714  # karakter: checkmark
+        $encoded  = [System.Text.Encoding]::UTF8.GetBytes($testChar)
+        $decoded  = [System.Text.Encoding]::UTF8.GetString($encoded)
+        if ($decoded -eq $testChar) {
+            # Coba set UTF-8, kalau berhasil kemungkinan besar support
+            $prev = [Console]::OutputEncoding
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            chcp 65001 2>&1 | Out-Null
+            # Jika codepage berhasil di-set ke 65001, anggap support
+            $cp = (chcp) -replace '[^0-9]', ''
+            if ($cp -eq "65001") { return $true }
+            [Console]::OutputEncoding = $prev
+        }
+    } catch {}
+
+    return $false
+}
+
+$UNICODE = Test-UnicodeSupport
+
+if ($UNICODE) {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    chcp 65001 | Out-Null
+
+    # Karakter set Unicode
+    $CH = @{
+        OK      = "[OK]"
+        WARN    = "[!!]"
+        ERR     = "[XX]"
+        INFO    = "[..]"
+        LINE    = [string][char]0x2550  # ═
+        TL      = [string][char]0x2554  # ╔
+        TR      = [string][char]0x2557  # ╗
+        BL      = [string][char]0x255A  # ╚
+        BR      = [string][char]0x255D  # ╝
+        SIDE    = [string][char]0x2551  # ║
+        HLINE   = [string][char]0x2500  # ─
+        LT      = [string][char]0x250C  # ┌
+        RT      = [string][char]0x2510  # ┐
+        LB      = [string][char]0x2514  # └
+        RB      = [string][char]0x2518  # ┘
+        SPIN    = @([string][char]0x280B,[string][char]0x2819,[string][char]0x2839,[string][char]0x2838,
+                    [string][char]0x283C,[string][char]0x2834,[string][char]0x2826,[string][char]0x2827,
+                    [string][char]0x2807,[string][char]0x280F)
+        BLOCK   = [string][char]0x2588  # █
+        EMPTY   = [string][char]0x2591  # ░
+        ARROW   = ">>"
+        CHECK   = [string][char]0x2714  # ✔
+        CROSS   = [string][char]0x2718  # ✘
+        BANG    = [string][char]0x26A0  # ⚠
+        DOT     = [string][char]0x25B8  # ▸
+    }
+} else {
+    # Karakter set ASCII murni (CMD lama / font tidak support)
+    $CH = @{
+        OK      = "[OK]"
+        WARN    = "[!!]"
+        ERR     = "[XX]"
+        INFO    = "[..]"
+        LINE    = "="
+        TL      = "+"
+        TR      = "+"
+        BL      = "+"
+        BR      = "+"
+        SIDE    = "|"
+        HLINE   = "-"
+        LT      = "+"
+        RT      = "+"
+        LB      = "+"
+        RB      = "+"
+        SPIN    = @("-", "\", "|", "/")
+        BLOCK   = "#"
+        EMPTY   = "-"
+        ARROW   = ">>"
+        CHECK   = "OK"
+        CROSS   = "XX"
+        BANG    = "!!"
+        DOT     = ">>"
+    }
+}
 
 # =============================================
 # ANIMASI FUNCTIONS
@@ -10,20 +118,30 @@ $env:ComSpec = "$env:SystemRoot\System32\cmd.exe"
 
 function Show-Banner {
     Clear-Host
-    $banner = @"
-
-  ███████╗██╗   ██╗███╗   ██╗ ██████╗
-  ██╔════╝╚██╗ ██╔╝████╗  ██║██╔════╝
-  ███████╗ ╚████╔╝ ██╔██╗ ██║██║
-  ╚════██║  ╚██╔╝  ██║╚██╗██║██║
-  ███████║   ██║   ██║ ╚████║╚██████╗
-  ╚══════╝   ╚═╝   ╚═╝  ╚═══╝ ╚═════╝
-   SYNCHRONIZER FIX TOOL  v5.7 ANIMATED
-"@
-    Write-Host $banner -ForegroundColor Cyan
-    Write-Host "  ════════════════════════════════════════" -ForegroundColor DarkCyan
-    Write-Host "  minicenter.my.id" -ForegroundColor DarkGray
-    Write-Host "  ════════════════════════════════════════" -ForegroundColor DarkCyan
+    Write-Host ""
+    if ($UNICODE) {
+        $top    = $CH.TL + ($CH.LINE * 42) + $CH.TR
+        $bottom = $CH.BL + ($CH.LINE * 42) + $CH.BR
+        $mid    = $CH.SIDE
+        Write-Host "  $top" -ForegroundColor Cyan
+        Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
+        Write-Host "  $mid   SYNCHRONIZER FIX TOOL  v5.7 ANIMATED  $mid" -ForegroundColor White
+        Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
+        Write-Host "  $mid          minicenter.my.id                $mid" -ForegroundColor DarkGray
+        Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
+        Write-Host "  $bottom" -ForegroundColor Cyan
+    } else {
+        Write-Host "  #####  #   #  #   #  #####" -ForegroundColor Cyan
+        Write-Host "  #       # #   ##  #  #    " -ForegroundColor Cyan
+        Write-Host "  ####     #    # # #  ####  " -ForegroundColor Cyan
+        Write-Host "  #       # #   #  ##  #    " -ForegroundColor Cyan
+        Write-Host "  #####  #   #  #   #  #####" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "  SYNCHRONIZER FIX TOOL  v5.7 ANIMATED" -ForegroundColor White
+        Write-Host "  ======================================" -ForegroundColor DarkCyan
+        Write-Host "  minicenter.my.id" -ForegroundColor DarkGray
+        Write-Host "  ======================================" -ForegroundColor DarkCyan
+    }
     Write-Host ""
 }
 
@@ -44,11 +162,10 @@ function Show-Spinner {
     param(
         [string]$Message,
         [ScriptBlock]$Job,
-        [int]$DelayMs = 80
+        [int]$DelayMs = 100
     )
-    $frames = @("⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏")
+    $frames = $CH.SPIN
     $i = 0
-    $done = $false
 
     $runspace = [runspacefactory]::CreateRunspace()
     $runspace.Open()
@@ -68,7 +185,7 @@ function Show-Spinner {
     $ps.Dispose()
     $runspace.Close()
 
-    Write-Host "`r  ✔ $Message   " -ForegroundColor Green
+    Write-Host "`r  $($CH.CHECK) $Message   " -ForegroundColor Green
 }
 
 function Show-ProgressBar {
@@ -78,34 +195,36 @@ function Show-ProgressBar {
         [ConsoleColor]$Color = "Cyan"
     )
     $steps = 30
-    $delay = [math]::Floor($DurationMs / $steps)
+    $delay = [math]::Max(1, [math]::Floor($DurationMs / $steps))
     Write-Host "  $Label" -ForegroundColor White
-    Write-Host -NoNewline "  ["
     for ($i = 1; $i -le $steps; $i++) {
-        $pct = [math]::Round(($i / $steps) * 100)
-        Write-Host -NoNewline "█" -ForegroundColor $Color
-        Write-Host "`r  [$("█" * $i)$("░" * ($steps - $i))] $pct%" -NoNewline -ForegroundColor $Color
+        $pct   = [math]::Round(($i / $steps) * 100)
+        $bar   = $CH.BLOCK * $i
+        $rest  = $CH.EMPTY * ($steps - $i)
+        Write-Host "`r  [$bar$rest] $pct%  " -NoNewline -ForegroundColor $Color
         Start-Sleep -Milliseconds $delay
     }
-    Write-Host "`r  [$("█" * $steps)] 100% ✔" -ForegroundColor Green
+    Write-Host "`r  [$($CH.BLOCK * $steps)] 100% $($CH.CHECK) DONE!  " -ForegroundColor Green
     Write-Host ""
 }
 
 function Write-Step {
     param([string]$Number, [string]$Title)
+    $line = $CH.LINE * 38
     Write-Host ""
-    Write-Host "  ┌─────────────────────────────────────┐" -ForegroundColor DarkCyan
-    Write-Host "  │  LANGKAH $Number — $Title" -ForegroundColor Cyan -NoNewline
-    $pad = 38 - $Title.Length - $Number.Length - 12
-    if ($pad -gt 0) { Write-Host (" " * $pad + "│") -ForegroundColor DarkCyan } else { Write-Host "  │" -ForegroundColor DarkCyan }
-    Write-Host "  └─────────────────────────────────────┘" -ForegroundColor DarkCyan
+    Write-Host "  $($CH.TL)$line$($CH.TR)" -ForegroundColor DarkCyan
+    $label = "  $($CH.SIDE) $($CH.ARROW) LANGKAH $Number -- $Title"
+    $pad   = 40 - $label.Length + 4
+    if ($pad -lt 1) { $pad = 1 }
+    Write-Host "$label$(' ' * $pad)$($CH.SIDE)" -ForegroundColor Cyan
+    Write-Host "  $($CH.BL)$line$($CH.BR)" -ForegroundColor DarkCyan
     Write-Host ""
 }
 
-function Write-OK    { param([string]$msg) Write-Host "    ✔  $msg" -ForegroundColor Green }
-function Write-WARN  { param([string]$msg) Write-Host "    ⚠  $msg" -ForegroundColor Yellow }
-function Write-ERR   { param([string]$msg) Write-Host "    ✖  $msg" -ForegroundColor Red }
-function Write-INFO  { param([string]$msg) Write-Host "    ▸  $msg" -ForegroundColor DarkGray }
+function Write-OK   { param([string]$msg) Write-Host "  $($CH.CHECK) $msg" -ForegroundColor Green }
+function Write-WARN { param([string]$msg) Write-Host "  $($CH.BANG)  $msg" -ForegroundColor Yellow }
+function Write-ERR  { param([string]$msg) Write-Host "  $($CH.CROSS) $msg" -ForegroundColor Red }
+function Write-INFO { param([string]$msg) Write-Host "  $($CH.DOT)   $msg" -ForegroundColor DarkGray }
 
 function Show-Countdown {
     param([int]$Seconds = 3, [string]$Message = "Membuka browser")
@@ -119,12 +238,13 @@ function Show-Countdown {
 }
 
 function Show-Done {
+    $line = $CH.LINE * 40
     Write-Host ""
-    Write-Host "  ╔══════════════════════════════════════╗" -ForegroundColor Green
-    Write-Host "  ║                                      ║" -ForegroundColor Green
-    Write-Host "  ║     ✔  SEMUA PERBAIKAN SELESAI!      ║" -ForegroundColor Green
-    Write-Host "  ║                                      ║" -ForegroundColor Green
-    Write-Host "  ╚══════════════════════════════════════╝" -ForegroundColor Green
+    Write-Host "  $($CH.TL)$line$($CH.TR)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)   $($CH.CHECK)  SEMUA PERBAIKAN SELESAI!           $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.BL)$line$($CH.BR)" -ForegroundColor Green
     Write-Host ""
 }
 
@@ -133,6 +253,13 @@ function Show-Done {
 # =============================================
 
 Show-Banner
+
+if ($UNICODE) {
+    Write-INFO "Mode Unicode aktif - terminal support terdeteksi"
+} else {
+    Write-INFO "Mode ASCII - terminal lama/CMD standar terdeteksi"
+}
+
 Start-Sleep -Milliseconds 400
 Write-Typewriter "  Mempersiapkan perbaikan sistem..." -Color DarkCyan -Delay 20
 Start-Sleep -Milliseconds 300
@@ -158,22 +285,21 @@ if (-not $isAdmin) {
 }
 
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-
 Write-OK "Berjalan sebagai Administrator"
 Start-Sleep -Milliseconds 300
 
-# --- Langkah Awal: Cek Port 7008 ---
-$basePath = "C:\synchronizer"
-$folderAda = Test-Path $basePath
-
+# --- Cek Port 7008 ---
 Write-Host ""
 Write-INFO "Mengecek port 7008 (Apache)..."
 Start-Sleep -Milliseconds 500
 $portActive = Get-NetTCPConnection -LocalPort 7008 -ErrorAction SilentlyContinue
 if ($portActive) { Write-OK "Port 7008 aktif." } else { Write-WARN "Port 7008 tidak aktif." }
 
+$basePath = "C:\synchronizer"
+$folderAda = Test-Path $basePath
+
 # =============================================
-# LANGKAH 1: Validasi Folder
+# LANGKAH 1
 # =============================================
 Write-Step "1" "Validasi Folder Instalasi"
 
@@ -191,10 +317,10 @@ if (!$folderAda) {
         Write-OK "Menggunakan folder: $basePath"
     } else {
         Write-Host ""
-        Write-Host "  ╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-        Write-Host "  ║  Silakan install Synchronizer terlebih dahulu.           ║" -ForegroundColor White
-        Write-Host "  ║  Download: https://drive.google.com/file/d/1jeMvOj...    ║" -ForegroundColor Cyan
-        Write-Host "  ╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+        Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
+        Write-Host "  $($CH.SIDE)  Silakan install Synchronizer terlebih dahulu.        $($CH.SIDE)" -ForegroundColor White
+        Write-Host "  $($CH.SIDE)  https://drive.google.com/file/d/1jeMvOjcylFcYJBH...  $($CH.SIDE)" -ForegroundColor Cyan
+        Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
         Write-Host ""
         Write-WARN "Setelah install, jalankan kembali script ini."
         Start-Process "https://drive.google.com/file/d/1jeMvOjcylFcYJBHux57Fz8S4lhZf849Y/view"
@@ -210,7 +336,7 @@ $phpExeDest = "$basePath\dataweb\php.exe"
 $phpIniDest = "$basePath\dataweb\php.ini"
 
 # =============================================
-# LANGKAH 2: Hentikan Proses
+# LANGKAH 2
 # =============================================
 Write-Step "2" "Menghentikan Proses Aktif"
 
@@ -218,16 +344,17 @@ $processesToKill = @("php", "synchronizer", "node")
 foreach ($proc in $processesToKill) {
     $running = Get-Process -Name $proc -ErrorAction SilentlyContinue
     if ($running) {
-        Show-Spinner -Message "Menghentikan proses: $proc" -Job { Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue }
+        Show-Spinner -Message "Menghentikan proses: $proc" -Job {
+            Stop-Process -Name $proc -Force -ErrorAction SilentlyContinue
+        }
     } else {
         Write-INFO "Proses $proc tidak berjalan, dilewati."
     }
 }
-
 Show-ProgressBar -Label "Menunggu proses berhenti sepenuhnya..." -DurationMs 3000 -Color DarkYellow
 
 # =============================================
-# LANGKAH 3: Chocolatey & Git
+# LANGKAH 3
 # =============================================
 Write-Step "3" "Persiapan Package Manager"
 
@@ -253,15 +380,15 @@ if (!(Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 # =============================================
-# LANGKAH 4: Konfigurasi Git
+# LANGKAH 4
 # =============================================
 Write-Step "4" "Konfigurasi Git"
 
 if (Get-Command git -ErrorAction SilentlyContinue) {
     $gitConfigs = @(
-        @("core.autocrlf", "false"),
-        @("advice.detachedHead", "false"),
-        @("core.fileMode", "false")
+        @("core.autocrlf",      "false"),
+        @("advice.detachedHead","false"),
+        @("core.fileMode",      "false")
     )
     foreach ($cfg in $gitConfigs) {
         & git config --global $cfg[0] $cfg[1]
@@ -272,10 +399,10 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-OK "safe.directory ditambahkan."
 }
 $env:GIT_TERMINAL_PROMPT = "0"
-$env:GIT_ASK_YESNO = "false"
+$env:GIT_ASK_YESNO      = "false"
 
 # =============================================
-# LANGKAH 5: Fix PHP
+# LANGKAH 5
 # =============================================
 Write-Step "5" "Perbaikan PHP"
 
@@ -286,13 +413,13 @@ if (Test-Path $phpExeDest) {
 }
 
 Show-ProgressBar -Label "Menyalin php.exe ke dataweb..." -DurationMs 1200 -Color Cyan
+
 if (Test-Path "$phpDir\php.exe") {
     Copy-Item "$phpDir\php.exe" -Destination $phpExeDest -Force
     Write-OK "php.exe disalin."
 } else {
     Write-WARN "php.exe tidak ditemukan di $phpDir"
 }
-
 if (Test-Path $phpIni) {
     Copy-Item $phpIni -Destination $phpIniDest -Force
     Write-OK "php.ini disalin."
@@ -309,7 +436,7 @@ if (Test-Path $phpExeDest) {
 }
 
 # =============================================
-# LANGKAH 6: Composer & Laravel Update
+# LANGKAH 6
 # =============================================
 Write-Step "6" "Fix Composer & Laravel Update"
 
@@ -321,18 +448,15 @@ if (Test-Path "$basePath\dataweb\vendor") {
 
 if (Test-Path "$basePath\updater") {
     Set-Location "$basePath\updater"
-
     Write-Typewriter "  Menjalankan composer.bat..." -Color Yellow -Delay 14
     Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
-
     Write-Typewriter "  Menjalankan updater.bat (Git pull)..." -Color Yellow -Delay 14
     Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c updater.bat" -Wait -NoNewWindow
-
     Write-OK "Langkah 6 selesai."
 }
 
 # =============================================
-# LANGKAH 7: Re-copy PHP setelah Git pull
+# LANGKAH 7
 # =============================================
 Write-Step "7" "Re-sinkronisasi PHP Pasca Git Pull"
 
@@ -348,7 +472,7 @@ if (Test-Path $phpIni) {
 }
 
 # =============================================
-# LANGKAH 8: Node.js & NPM Build
+# LANGKAH 8
 # =============================================
 Write-Step "8" "Fix Node.js & NPM Build"
 
@@ -366,7 +490,7 @@ cd /d "$basePath\dataweb"
 echo Mengecek versi Node:
 node -v
 if errorlevel 1 (
-    echo ERROR: Node.js tidak terdeteksi! Pastikan Node.js sudah terinstall.
+    echo ERROR: Node.js tidak terdeteksi!
     pause
     exit /b 1
 )
@@ -385,7 +509,6 @@ $npmContent | Out-File $npmScriptPath -Encoding ASCII
 
 Write-Typewriter "  Menjalankan npm install & build..." -Color Yellow -Delay 14
 Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c $npmScriptPath" -Wait
-
 Write-OK "NPM build selesai."
 
 # =============================================
