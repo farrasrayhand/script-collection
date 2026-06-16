@@ -469,12 +469,22 @@ if (!$folderAda) {
             Choco   = "git"
             Check   = "HKLM:\SOFTWARE\GitForWindows"
             Check64 = "HKLM:\SOFTWARE\WOW6432Node\GitForWindows"
+        },
+        @{
+            Name      = "Composer"
+            Choco     = "composer"
+            CheckFile = "C:\ProgramData\ComposerSetup\bin\composer.bat"
         }
     )
 
     foreach ($p in $prereqs) {
         $installed = $false
-        if ($p.MinVal) {
+        if ($p.CheckFile) {
+            # Cek berdasarkan keberadaan file (mis. Composer)
+            if (Test-Path $p.CheckFile) { $installed = $true }
+            # Cek juga apakah composer ada di PATH
+            elseif (Get-Command composer -ErrorAction SilentlyContinue) { $installed = $true }
+        } elseif ($p.MinVal) {
             try {
                 $val = (Get-ItemProperty -Path $p.Check -Name $p.ValName -ErrorAction Stop).$($p.ValName)
                 if ($val -ge $p.MinVal) { $installed = $true }
