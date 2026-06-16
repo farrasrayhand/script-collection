@@ -307,199 +307,191 @@ Write-Step "1" "Validasi Folder Instalasi"
 if (!$folderAda) {
     Write-WARN "Folder $basePath tidak ditemukan."
     Write-Host ""
-    $sudahInstall = Read-Host "  Apakah Synchronizer sudah terinstall? (Y/N)"
+    Write-INFO "Synchronizer belum terinstall. Memulai proses instalasi otomatis..."
+    Write-Host ""
 
-    if ($sudahInstall -eq "Y" -or $sudahInstall -eq "y") {
-        $basePath = Read-Host "  Masukkan path folder instalasi"
-        if (!(Test-Path $basePath)) {
-            Write-ERR "Folder '$basePath' tidak ditemukan. Script dihentikan."
-            exit
+    # --- Auto Download + Silent Install ---
+    $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
+    $installerPath = "$env:TEMP\e-Rapor_SMK_Synchronizer.exe"
+
+    Write-Host ""
+    Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
+    Write-Host "  $($CH.SIDE)  Synchronizer belum terinstall.                        $($CH.SIDE)" -ForegroundColor White
+    Write-Host "  $($CH.SIDE)  Akan didownload dan diinstall otomatis...             $($CH.SIDE)" -ForegroundColor Cyan
+    Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
+    Write-Host ""
+
+    # -----------------------------------------------
+    # PREREQUISITES - Install sebelum installer utama
+    # -----------------------------------------------
+    Write-Host "  $($CH.ARROW) Memeriksa Prerequisites..." -ForegroundColor Cyan
+    Write-Host ""
+
+    # Pastikan Chocolatey tersedia untuk install prereqs
+    if (!(Test-Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
+        Write-INFO "Menginstal Chocolatey untuk prerequisites..."
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+        $env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
+    }
+    $chocoExe = "C:\ProgramData\chocolatey\bin\choco.exe"
+
+    # Daftar prerequisites
+    $prereqs = @(
+        @{
+            Name    = "Visual C++ Redistributable 2013 (x86)"
+            Choco   = "vcredist2013"
+            Check   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
+            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
+        },
+        @{
+            Name    = "Visual C++ Redistributable 2015-2022 (x86)"
+            Choco   = "vcredist140"
+            Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+        },
+        @{
+            Name    = "Visual C++ Redistributable 2015-2022 (x64)"
+            Choco   = "vcredist140"
+            Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+        },
+        @{
+            Name    = ".NET Framework 4.8"
+            Choco   = "dotnetfx"
+            Check   = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+            MinVal  = 528040
+            ValName = "Release"
+        },
+        @{
+            Name    = "WebView2 Runtime"
+            Choco   = "microsoft-edge-webview2-runtime"
+            Check   = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+            Check64 = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
         }
-        Write-OK "Menggunakan folder: $basePath"
-    } else {
-        # --- Auto Download + Silent Install ---
-        $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
-        $installerPath = "$env:TEMP\e-Rapor_SMK_Synchronizer.exe"
+    )
 
-        Write-Host ""
-        Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
-        Write-Host "  $($CH.SIDE)  Synchronizer belum terinstall.                        $($CH.SIDE)" -ForegroundColor White
-        Write-Host "  $($CH.SIDE)  Akan didownload dan diinstall otomatis...             $($CH.SIDE)" -ForegroundColor Cyan
-        Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
-        Write-Host ""
-
-        # -----------------------------------------------
-        # PREREQUISITES - Install sebelum installer utama
-        # -----------------------------------------------
-        Write-Host "  $($CH.ARROW) Memeriksa Prerequisites..." -ForegroundColor Cyan
-        Write-Host ""
-
-        # Pastikan Chocolatey tersedia untuk install prereqs
-        if (!(Test-Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
-            Write-INFO "Menginstal Chocolatey untuk prerequisites..."
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-            $env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
+    foreach ($p in $prereqs) {
+        $installed = $false
+        if ($p.MinVal) {
+            try {
+                $val = (Get-ItemProperty -Path $p.Check -Name $p.ValName -ErrorAction Stop).$($p.ValName)
+                if ($val -ge $p.MinVal) { $installed = $true }
+            } catch { $installed = $false }
+        } else {
+            if (Test-Path $p.Check) { $installed = $true }
+            elseif ($p.Check64 -and (Test-Path $p.Check64)) { $installed = $true }
         }
-        $chocoExe = "C:\ProgramData\chocolatey\bin\choco.exe"
 
-        # Daftar prerequisites
-        $prereqs = @(
-            @{
-                Name    = "Visual C++ Redistributable 2013 (x86)"
-                Choco   = "vcredist2013"
-                Check   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
-                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
-            },
-            @{
-                Name    = "Visual C++ Redistributable 2015-2022 (x86)"
-                Choco   = "vcredist140"
-                Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
-                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
-            },
-            @{
-                Name    = "Visual C++ Redistributable 2015-2022 (x64)"
-                Choco   = "vcredist140"
-                Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
-                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
-            },
-            @{
-                Name    = ".NET Framework 4.8"
-                Choco   = "dotnetfx"
-                Check   = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
-                MinVal  = 528040
-                ValName = "Release"
-            },
-            @{
-                Name    = "WebView2 Runtime"
-                Choco   = "microsoft-edge-webview2-runtime"
-                Check   = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-                Check64 = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-            }
-        )
-
-        foreach ($p in $prereqs) {
-            $installed = $false
-            if ($p.MinVal) {
-                try {
-                    $val = (Get-ItemProperty -Path $p.Check -Name $p.ValName -ErrorAction Stop).$($p.ValName)
-                    if ($val -ge $p.MinVal) { $installed = $true }
-                } catch { $installed = $false }
-            } else {
-                if (Test-Path $p.Check) { $installed = $true }
-                elseif ($p.Check64 -and (Test-Path $p.Check64)) { $installed = $true }
-            }
-
-            if ($installed) {
-                Write-OK "$($p.Name) sudah terinstall, dilewati."
-            } else {
-                Write-INFO "$($p.Name) belum ada, menginstall..."
-                try {
-                    $proc = Start-Process -FilePath $chocoExe `
-                        -ArgumentList "install $($p.Choco) -y --no-progress --ignore-checksums" `
-                        -Wait -PassThru -NoNewWindow
-                    if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
-                        Write-OK "$($p.Name) berhasil diinstall."
-                        if ($proc.ExitCode -eq 3010) {
-                            Write-WARN "Reboot disarankan setelah selesai untuk $($p.Name)."
-                        }
-                    } else {
-                        Write-WARN "$($p.Name) exit code: $($proc.ExitCode) -- lanjutkan."
+        if ($installed) {
+            Write-OK "$($p.Name) sudah terinstall, dilewati."
+        } else {
+            Write-INFO "$($p.Name) belum ada, menginstall..."
+            try {
+                $proc = Start-Process -FilePath $chocoExe `
+                    -ArgumentList "install $($p.Choco) -y --no-progress --ignore-checksums" `
+                    -Wait -PassThru -NoNewWindow
+                if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
+                    Write-OK "$($p.Name) berhasil diinstall."
+                    if ($proc.ExitCode -eq 3010) {
+                        Write-WARN "Reboot disarankan setelah selesai untuk $($p.Name)."
                     }
-                } catch {
-                    Write-WARN "Gagal install $($p.Name): $_ -- dilanjutkan."
+                } else {
+                    Write-WARN "$($p.Name) exit code: $($proc.ExitCode) -- lanjutkan."
                 }
+            } catch {
+                Write-WARN "Gagal install $($p.Name): $_ -- dilanjutkan."
             }
         }
+    }
 
-        Write-Host ""
-        Write-OK "Pemeriksaan prerequisites selesai."
-        Write-Host ""
+    Write-Host ""
+    Write-OK "Pemeriksaan prerequisites selesai."
+    Write-Host ""
 
 
-        # Download dengan progress bar real
-        Write-INFO "Mengunduh installer dari GitHub..."
-        try {
-            $wc = New-Object System.Net.WebClient
-            $global:dlDone = $false
-            $global:dlError = $null
+    # Download dengan progress bar real
+    Write-INFO "Mengunduh installer dari GitHub..."
+    try {
+        $wc = New-Object System.Net.WebClient
+        $global:dlDone = $false
+        $global:dlError = $null
 
-            # Progress handler
-            $wc.DownloadProgressChanged += {
-                param($s, $e)
-                $pct  = $e.ProgressPercentage
-                $recv = [math]::Round($e.BytesReceived / 1MB, 1)
-                $tot  = [math]::Round($e.TotalBytesToReceive / 1MB, 1)
-                $filled = [math]::Floor($pct / 100 * 30)
-                $bar  = $CH.BLOCK * $filled
-                $rest = $CH.EMPTY * (30 - $filled)
-                Write-Host "`r  [$bar$rest] $pct% ($recv MB / $tot MB)  " -NoNewline -ForegroundColor Cyan
-            }
-            $wc.DownloadFileCompleted += {
-                param($s, $e)
-                if ($e.Error) { $global:dlError = $e.Error.Message }
-                $global:dlDone = $true
-            }
-
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            $wc.DownloadFileAsync([uri]$installerUrl, $installerPath)
-
-            $spin = @("-", "\", "|", "/")
-            $si = 0
-            while (-not $global:dlDone) {
-                # Spinner sebagai fallback kalau progress event tidak fire (misal server tidak kirim Content-Length)
-                Start-Sleep -Milliseconds 150
-                $si++
-            }
-            Write-Host "`r  [$($CH.BLOCK * 30)] 100% $($CH.CHECK) Download selesai!          " -ForegroundColor Green
-            Write-Host ""
-
-            if ($global:dlError) {
-                throw $global:dlError
-            }
-        } catch {
-            Write-ERR "Gagal download: $_"
-            Write-WARN "Coba download manual: $installerUrl"
-            Start-Process $installerUrl
-            exit
+        # Progress handler
+        $wc.DownloadProgressChanged += {
+            param($s, $e)
+            $pct  = $e.ProgressPercentage
+            $recv = [math]::Round($e.BytesReceived / 1MB, 1)
+            $tot  = [math]::Round($e.TotalBytesToReceive / 1MB, 1)
+            $filled = [math]::Floor($pct / 100 * 30)
+            $bar  = $CH.BLOCK * $filled
+            $rest = $CH.EMPTY * (30 - $filled)
+            Write-Host "`r  [$bar$rest] $pct% ($recv MB / $tot MB)  " -NoNewline -ForegroundColor Cyan
+        }
+        $wc.DownloadFileCompleted += {
+            param($s, $e)
+            if ($e.Error) { $global:dlError = $e.Error.Message }
+            $global:dlDone = $true
         }
 
-        # Verifikasi file hasil download
-        if (!(Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1MB) {
-            Write-ERR "File installer tidak valid atau tidak lengkap."
-            exit
-        }
-        Write-OK "File installer siap: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB)"
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        $wc.DownloadFileAsync([uri]$installerUrl, $installerPath)
 
-        # Silent install
-        Write-Host ""
-        Write-Typewriter "  Menjalankan silent install..." -Color Yellow -Delay 14
-        Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
+        $spin = @("-", "\", "|", "/")
+        $si = 0
+        while (-not $global:dlDone) {
+            # Spinner sebagai fallback kalau progress event tidak fire (misal server tidak kirim Content-Length)
+            Start-Sleep -Milliseconds 150
+            $si++
+        }
+        Write-Host "`r  [$($CH.BLOCK * 30)] 100% $($CH.CHECK) Download selesai!          " -ForegroundColor Green
         Write-Host ""
 
-        $installProc = Start-Process -FilePath $installerPath `
-            -ArgumentList "/exenoui /qn" `
-            -Wait -PassThru
-
-        if ($installProc.ExitCode -eq 0) {
-            Write-OK "Instalasi selesai! (Exit code: 0)"
-        } else {
-            Write-WARN "Installer selesai dengan exit code: $($installProc.ExitCode)"
-            Write-INFO "Exit code non-zero tidak selalu berarti gagal pada installer ini."
+        if ($global:dlError) {
+            throw $global:dlError
         }
+    } catch {
+        Write-ERR "Gagal download: $_"
+        Write-WARN "Coba download manual: $installerUrl"
+        Start-Process $installerUrl
+        exit
+    }
 
-        # Verifikasi hasil install
-        Start-Sleep -Seconds 2
-        if (Test-Path $basePath) {
-            Write-OK "Folder $basePath berhasil dibuat. Instalasi sukses!"
-            # Hapus file installer temp
-            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-        } else {
-            Write-ERR "Folder $basePath tidak ditemukan setelah install."
-            Write-WARN "Coba install manual: $installerUrl"
-            Start-Process $installerUrl
-            exit
-        }
+    # Verifikasi file hasil download
+    if (!(Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1MB) {
+        Write-ERR "File installer tidak valid atau tidak lengkap."
+        exit
+    }
+    Write-OK "File installer siap: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB)"
+
+    # Silent install
+    Write-Host ""
+    Write-Typewriter "  Menjalankan silent install..." -Color Yellow -Delay 14
+    Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
+    Write-Host ""
+
+    $installProc = Start-Process -FilePath $installerPath `
+        -ArgumentList "/exenoui /qn" `
+        -Wait -PassThru
+
+    if ($installProc.ExitCode -eq 0) {
+        Write-OK "Instalasi selesai! (Exit code: 0)"
+    } else {
+        Write-WARN "Installer selesai dengan exit code: $($installProc.ExitCode)"
+        Write-INFO "Exit code non-zero tidak selalu berarti gagal pada installer ini."
+    }
+
+    # Verifikasi hasil install
+    Start-Sleep -Seconds 2
+    if (Test-Path $basePath) {
+        Write-OK "Folder $basePath berhasil dibuat. Instalasi sukses!"
+        # Hapus file installer temp
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+    } else {
+        Write-ERR "Folder $basePath tidak ditemukan setelah install."
+        Write-WARN "Coba install manual: $installerUrl"
+        Start-Process $installerUrl
+        exit
     }
 } else {
     Write-OK "Folder ditemukan: $basePath"
