@@ -728,16 +728,68 @@ if (Test-Path $phpExeDest) {
 # =============================================
 Write-Step "6" "Fix Composer & Laravel Update"
 
-if (Test-Path "$basePath\dataweb\vendor") {
+$datawebPath = "$basePath\dataweb"
+$phpExe      = "$basePath\php\php.exe"
+
+# Cari composer (composer.phar di dataweb, atau composer global)
+$composerPhar = "$datawebPath\composer.phar"
+$composerCmd  = $null
+if (Test-Path $composerPhar) {
+    $composerCmd = "phar"
+} elseif (Get-Command composer -ErrorAction SilentlyContinue) {
+    $composerCmd = "global"
+}
+
+# Hapus vendor lama yang corrupt/tidak lengkap
+if (Test-Path "$datawebPath\vendor") {
     Show-Spinner -Message "Menghapus folder vendor lama..." -Job {
-        Remove-Item "$basePath\dataweb\vendor" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item "$datawebPath\vendor" -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
-if (Test-Path "$basePath\updater") {
+# Jalankan composer install LENGKAP (bukan composer.bat bawaan yang tidak lengkap)
+if (Test-Path $datawebPath) {
+    Set-Location $datawebPath
+
+    if ($composerCmd) {
+        Write-Typewriter "  Menjalankan composer install (lengkap)..." -Color Yellow -Delay 14
+        Write-INFO "Proses ini bisa memakan beberapa menit, mohon tunggu..."
+
+        # Set environment agar composer pakai PHP Synchronizer
+        $env:PATH = "$basePath\php;" + $env:PATH
+
+        if ($composerCmd -eq "phar") {
+            # Pakai composer.phar dengan PHP bundled
+            & $phpExe $composerPhar install --no-interaction --optimize-autoloader --no-progress 2>&1 | Out-Host
+        } else {
+            # Pakai composer global
+            & composer install --no-interaction --optimize-autoloader --no-progress 2>&1 | Out-Host
+        }
+
+        # Verifikasi vendor benar-benar lengkap
+        $vendorCheck = "$datawebPath\vendor\laravel\framework\src\Illuminate\Support\functions.php"
+        if (Test-Path $vendorCheck) {
+            Write-OK "Composer install selesai, vendor lengkap."
+        } else {
+            Write-WARN "Vendor mungkin belum lengkap, mencoba ulang dengan composer.bat bawaan..."
+            if (Test-Path "$basePath\updater\composer.bat") {
+                Set-Location "$basePath\updater"
+                Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
+            }
+        }
+    } else {
+        # Fallback: tidak ada composer terdeteksi, pakai composer.bat bawaan
+        Write-WARN "Composer tidak terdeteksi, memakai composer.bat bawaan."
+        if (Test-Path "$basePath\updater\composer.bat") {
+            Set-Location "$basePath\updater"
+            Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
+        }
+    }
+}
+
+# Jalankan updater.bat (Git pull untuk update kode terbaru)
+if (Test-Path "$basePath\updater\updater.bat") {
     Set-Location "$basePath\updater"
-    Write-Typewriter "  Menjalankan composer.bat..." -Color Yellow -Delay 14
-    Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
     Write-Typewriter "  Menjalankan updater.bat (Git pull)..." -Color Yellow -Delay 14
     Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c updater.bat" -Wait -NoNewWindow
     Write-OK "Langkah 6 selesai."
@@ -798,6 +850,129 @@ $npmContent | Out-File $npmScriptPath -Encoding ASCII
 Write-Typewriter "  Menjalankan npm install & build..." -Color Yellow -Delay 14
 Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c $npmScriptPath" -Wait
 Write-OK "NPM build selesai."
+
+# =============================================
+# LANGKAH 9 - Pastikan Apache Jalan
+# =============================================
+Write-Step "9" "Menjalankan Apache (Web Server)"
+
+$apacheJalan = $false
+
+# Fungsi cek apakah port 7008 sudah listen
+function Test-PortListening {
+    param([int]$port = 7008)
+    try {
+        $c = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        return ($null -ne $c)
+    } catch { return $false }
+}
+
+# Cek dulu apakah sudah jalan
+if (Test-PortListening 7008) {
+    Write-OK "Apache sudah berjalan di port 7008."
+    $apacheJalan = $true
+}
+
+# --- Metode 1: Start Windows Service Apache ---
+if (-not $apacheJalan) {
+    Write-INFO "Mencari service Apache..."
+    $svc = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -match "Apache|httpd|synchronizer|erapor" -or
+        $_.DisplayName -match "Apache|Synchronizer|e-Rapor"
+    } | Select-Object -First 1
+
+    if ($svc) {
+        Write-INFO "Service ditemukan: $($svc.Name) - $($svc.DisplayName)"
+        try {
+            if ($svc.Status -ne "Running") {
+                Start-Service -Name $svc.Name -ErrorAction Stop
+                Start-Sleep -Seconds 3
+            }
+            if (Test-PortListening 7008) {
+                Write-OK "Apache service berhasil dijalankan."
+                $apacheJalan = $true
+            }
+        } catch {
+            Write-WARN "Gagal start service: $_"
+        }
+    } else {
+        Write-INFO "Service Apache tidak ditemukan, mencoba metode lain."
+    }
+}
+
+# --- Metode 2: Jalankan httpd.bat ---
+if (-not $apacheJalan) {
+    $httpdBat = "$basePath\httpd.bat"
+    if (Test-Path $httpdBat) {
+        Write-INFO "Menjalankan httpd.bat..."
+        try {
+            Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c `"$httpdBat`"" -WorkingDirectory $basePath -WindowStyle Hidden
+            Start-Sleep -Seconds 4
+            if (Test-PortListening 7008) {
+                Write-OK "Apache berhasil dijalankan via httpd.bat."
+                $apacheJalan = $true
+            }
+        } catch {
+            Write-WARN "Gagal menjalankan httpd.bat: $_"
+        }
+    }
+}
+
+# --- Metode 3: Jalankan apache_start.bat ---
+if (-not $apacheJalan) {
+    # Cari apache_start.bat di beberapa lokasi umum
+    $startBatCandidates = @(
+        "$basePath\apache_start.bat",
+        "$basePath\apache\bin\apache_start.bat",
+        "$basePath\bin\apache_start.bat"
+    )
+    foreach ($sb in $startBatCandidates) {
+        if (Test-Path $sb) {
+            Write-INFO "Menjalankan $sb..."
+            try {
+                Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c `"$sb`"" -WindowStyle Hidden
+                Start-Sleep -Seconds 4
+                if (Test-PortListening 7008) {
+                    Write-OK "Apache berhasil dijalankan."
+                    $apacheJalan = $true
+                    break
+                }
+            } catch {
+                Write-WARN "Gagal: $_"
+            }
+        }
+    }
+}
+
+# --- Metode 4: Jalankan httpd.exe -k start langsung ---
+if (-not $apacheJalan) {
+    # Cari httpd.exe di struktur Synchronizer
+    $httpdExe = Get-ChildItem -Path $basePath -Filter "httpd.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($httpdExe) {
+        Write-INFO "Menjalankan httpd.exe langsung: $($httpdExe.FullName)"
+        try {
+            # Coba install + start sebagai service dulu
+            Start-Process -FilePath $httpdExe.FullName -ArgumentList "-k install" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
+            Start-Process -FilePath $httpdExe.FullName -ArgumentList "-k start" -WindowStyle Hidden -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 4
+            if (Test-PortListening 7008) {
+                Write-OK "Apache berhasil dijalankan via httpd.exe."
+                $apacheJalan = $true
+            }
+        } catch {
+            Write-WARN "Gagal menjalankan httpd.exe: $_"
+        }
+    }
+}
+
+# Hasil akhir
+if ($apacheJalan) {
+    Write-OK "Web server aktif. Aplikasi siap diakses di http://localhost:7008"
+} else {
+    Write-WARN "Apache belum bisa dipastikan jalan otomatis."
+    Write-INFO "Coba buka aplikasi 'e-Rapor SMK Synchronizer' dari Start Menu / shortcut Desktop"
+    Write-INFO "untuk menjalankan web server-nya secara manual."
+}
 
 # =============================================
 # SELESAI
