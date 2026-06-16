@@ -570,7 +570,7 @@ if (!$folderAda) {
         Write-Host ""
 
         $installProc = Start-Process -FilePath $installerPath `
-            -ArgumentList "/exenoui /qn /SkipPrereqs AI_PreReqsPassed=1 REBOOT=ReallySuppress" `
+            -ArgumentList "/exenoui /qn /SkipPrereqs AI_PREREQ_CHAINER=0 REBOOT=ReallySuppress" `
             -Wait -PassThru
 
         if ($installProc.ExitCode -eq 0) {
