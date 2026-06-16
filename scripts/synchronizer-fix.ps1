@@ -246,9 +246,9 @@ function Show-Done {
     $line = $CH.LINE * 40
     Write-Host ""
     Write-Host "  $($CH.TL)$line$($CH.TR)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)                                          $  ($CH.SIDE)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)   $($CH.CHECK)  SEMUA PERBAIKAN SELESAI!           $  ($CH.SIDE)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)                                          $  ($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)   $($CH.CHECK)  SEMUA PERBAIKAN SELESAI!           $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
     Write-Host "  $($CH.BL)$line$($CH.BR)" -ForegroundColor Green
     Write-Host ""
 }
@@ -461,9 +461,10 @@ if (!$folderAda) {
                 Check64 = "HKLM:\SOFTWARE\WOW6432Node\GitForWindows"
             },
             @{
-                Name      = "Composer"
-                Choco     = "composer"
-                CheckFile = "C:\ProgramData\ComposerSetup\bin\composer.bat"
+                Name       = "Composer"
+                Choco      = "composer"
+                CheckFile  = "C:\ProgramData\chocolatey\bin\composer.bat"
+                CheckFile2 = "C:\ProgramData\ComposerSetup\bin\composer.bat"
             }
         )
 
@@ -471,6 +472,7 @@ if (!$folderAda) {
             $installed = $false
             if ($p.CheckFile) {
                 if (Test-Path $p.CheckFile) { $installed = $true }
+                elseif ($p.CheckFile2 -and (Test-Path $p.CheckFile2)) { $installed = $true }
                 elseif (Get-Command composer -ErrorAction SilentlyContinue) { $installed = $true }
             } elseif ($p.MinVal) {
                 try {
@@ -501,6 +503,8 @@ if (!$folderAda) {
                 } catch {
                     Write-WARN "Gagal install $($p.Name): $_ -- dilanjutkan."
                 }
+                # Refresh PATH setelah setiap install agar deteksi berikutnya akurat
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
             }
         }
 
@@ -569,9 +573,13 @@ if (!$folderAda) {
         Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
         Write-Host ""
 
+        # FIX: Installer ini menggunakan Advanced Installer (Caphyon).
+        # Flag AI_BOOTSTRAPPER_OPTIONS=o memerintahkan Advanced Installer untuk
+        # melewati semua prerequisite installer (Git, Composer) tanpa membuka GUI-nya,
+        # karena semua prereqs sudah diinstall via Chocolatey di langkah sebelumnya.
         $installProc = Start-Process -FilePath $installerPath `
-            -ArgumentList "/exenoui /qn AI_PREREQ_CHAINER=0 REBOOT=ReallySuppress" `
-            -Wait -PassThru
+            -ArgumentList "/exenoui /qn /norestart REBOOT=ReallySuppress AI_BOOTSTRAPPER_OPTIONS=o" `
+            -Wait -PassThru -WindowStyle Hidden
 
         if ($installProc.ExitCode -eq 0) {
             Write-OK "Instalasi selesai! (Exit code: 0)"
@@ -632,15 +640,19 @@ if (!(Test-Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
     Write-OK "Chocolatey sudah terinstall."
 }
 
-$env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+# Refresh PATH dengan sertakan path Git secara eksplisit
+$env:Path = "C:\ProgramData\chocolatey\bin;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;" + `
+    [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + `
+    [System.Environment]::GetEnvironmentVariable("Path","User")
 Write-OK "Environment Path diperbarui."
 
 if (!(Get-Command git -ErrorAction SilentlyContinue)) {
     Show-Spinner -Message "Menginstal Git..." -Job {
         & "C:\ProgramData\chocolatey\bin\choco.exe" install git -y | Out-Null
     }
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:Path = "C:\ProgramData\chocolatey\bin;C:\Program Files\Git\cmd;C:\Program Files\Git\bin;" + `
+        [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + `
+        [System.Environment]::GetEnvironmentVariable("Path","User")
 } else {
     Write-OK "Git sudah terinstall."
 }
@@ -741,7 +753,6 @@ if (Test-Path $datawebPath) {
 
         try {
             if ($composerCmd -eq "phar") {
-                # Menggunakan kombinasi clear-cache dan install standar (tanpa flag --refresh yang tidak didukung)
                 $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" clear-cache && `"$phpExe`" `"$composerPhar`" install --no-interaction --optimize-autoloader --no-progress`""
             } else {
                 $cmdLine = "/c composer clear-cache && composer install --no-interaction --optimize-autoloader --no-progress"
