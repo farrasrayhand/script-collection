@@ -463,6 +463,12 @@ if (!$folderAda) {
             Choco   = "microsoft-edge-webview2-runtime"
             Check   = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
             Check64 = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        },
+        @{
+            Name    = "Git"
+            Choco   = "git"
+            Check   = "HKLM:\SOFTWARE\GitForWindows"
+            Check64 = "HKLM:\SOFTWARE\WOW6432Node\GitForWindows"
         }
     )
 
@@ -574,7 +580,7 @@ if (!$folderAda) {
     Write-Host ""
 
     $installProc = Start-Process -FilePath $installerPath `
-        -ArgumentList "/exenoui /qn" `
+        -ArgumentList "/exenoui /qn AI_PREREQ_CHAINER=0 REBOOT=ReallySuppress" `
         -Wait -PassThru
 
     if ($installProc.ExitCode -eq 0) {
