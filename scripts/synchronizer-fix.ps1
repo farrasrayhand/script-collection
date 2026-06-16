@@ -316,15 +316,100 @@ if (!$folderAda) {
         }
         Write-OK "Menggunakan folder: $basePath"
     } else {
+        # --- Auto Download + Silent Install ---
+        $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
+        $installerPath = "$env:TEMP\e-Rapor_SMK_Synchronizer.exe"
+
         Write-Host ""
         Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
-        Write-Host "  $($CH.SIDE)  Silakan install Synchronizer terlebih dahulu.        $($CH.SIDE)" -ForegroundColor White
-        Write-Host "  $($CH.SIDE)  https://drive.google.com/file/d/1jeMvOjcylFcYJBH...  $($CH.SIDE)" -ForegroundColor Cyan
+        Write-Host "  $($CH.SIDE)  Synchronizer belum terinstall.                        $($CH.SIDE)" -ForegroundColor White
+        Write-Host "  $($CH.SIDE)  Akan didownload dan diinstall otomatis...             $($CH.SIDE)" -ForegroundColor Cyan
         Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
         Write-Host ""
-        Write-WARN "Setelah install, jalankan kembali script ini."
-        Start-Process "https://drive.google.com/file/d/1jeMvOjcylFcYJBHux57Fz8S4lhZf849Y/view"
-        exit
+
+        # Download dengan progress bar real
+        Write-INFO "Mengunduh installer dari GitHub..."
+        try {
+            $wc = New-Object System.Net.WebClient
+            $global:dlDone = $false
+            $global:dlError = $null
+
+            # Progress handler
+            $wc.DownloadProgressChanged += {
+                param($s, $e)
+                $pct  = $e.ProgressPercentage
+                $recv = [math]::Round($e.BytesReceived / 1MB, 1)
+                $tot  = [math]::Round($e.TotalBytesToReceive / 1MB, 1)
+                $filled = [math]::Floor($pct / 100 * 30)
+                $bar  = $CH.BLOCK * $filled
+                $rest = $CH.EMPTY * (30 - $filled)
+                Write-Host "`r  [$bar$rest] $pct% ($recv MB / $tot MB)  " -NoNewline -ForegroundColor Cyan
+            }
+            $wc.DownloadFileCompleted += {
+                param($s, $e)
+                if ($e.Error) { $global:dlError = $e.Error.Message }
+                $global:dlDone = $true
+            }
+
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            $wc.DownloadFileAsync([uri]$installerUrl, $installerPath)
+
+            $spin = @("-", "\", "|", "/")
+            $si = 0
+            while (-not $global:dlDone) {
+                # Spinner sebagai fallback kalau progress event tidak fire (misal server tidak kirim Content-Length)
+                Start-Sleep -Milliseconds 150
+                $si++
+            }
+            Write-Host "`r  [$($CH.BLOCK * 30)] 100% $($CH.CHECK) Download selesai!          " -ForegroundColor Green
+            Write-Host ""
+
+            if ($global:dlError) {
+                throw $global:dlError
+            }
+        } catch {
+            Write-ERR "Gagal download: $_"
+            Write-WARN "Coba download manual: $installerUrl"
+            Start-Process $installerUrl
+            exit
+        }
+
+        # Verifikasi file hasil download
+        if (!(Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1MB) {
+            Write-ERR "File installer tidak valid atau tidak lengkap."
+            exit
+        }
+        Write-OK "File installer siap: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB)"
+
+        # Silent install
+        Write-Host ""
+        Write-Typewriter "  Menjalankan silent install..." -Color Yellow -Delay 14
+        Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
+        Write-Host ""
+
+        $installProc = Start-Process -FilePath $installerPath `
+            -ArgumentList "/exenoui /qn" `
+            -Wait -PassThru
+
+        if ($installProc.ExitCode -eq 0) {
+            Write-OK "Instalasi selesai! (Exit code: 0)"
+        } else {
+            Write-WARN "Installer selesai dengan exit code: $($installProc.ExitCode)"
+            Write-INFO "Exit code non-zero tidak selalu berarti gagal pada installer ini."
+        }
+
+        # Verifikasi hasil install
+        Start-Sleep -Seconds 2
+        if (Test-Path $basePath) {
+            Write-OK "Folder $basePath berhasil dibuat. Instalasi sukses!"
+            # Hapus file installer temp
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-ERR "Folder $basePath tidak ditemukan setelah install."
+            Write-WARN "Coba install manual: $installerUrl"
+            Start-Process $installerUrl
+            exit
+        }
     }
 } else {
     Write-OK "Folder ditemukan: $basePath"
