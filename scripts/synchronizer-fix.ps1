@@ -308,18 +308,98 @@ if (!$folderAda) {
     Write-WARN "Folder default $basePath tidak ditemukan."
     Write-Host ""
 
-    if ($portActive) {
-        # Port aktif tapi folder default tidak ada = install di folder custom
-        Write-INFO "Port 7008 aktif - kemungkinan Synchronizer terinstall di folder lain."
-        $basePath = Read-Host "  Masukkan path folder instalasi Synchronizer"
-        if (!(Test-Path $basePath)) {
-            Write-ERR "Folder '$basePath' tidak ditemukan. Script dihentikan."
-            pause
-            exit
+    # Fungsi: verifikasi folder benar-benar Synchronizer (bukan e-Rapor/Apache lain)
+    # Penanda unik: data_sync.json, SyncSession.php, atau folder updater
+    function Test-IsSynchronizer {
+        param([string]$path)
+        if ([string]::IsNullOrWhiteSpace($path)) { return $false }
+        $markers = @(
+            "$path\dataweb\data_sync.json",
+            "$path\dataweb\app\Models\SyncSession.php",
+            "$path\updater\updater.bat"
+        )
+        $found = 0
+        foreach ($m in $markers) {
+            if (Test-Path $m) { $found++ }
         }
-        Write-OK "Menggunakan folder: $basePath"
-        $folderAda = $true
-    } else {
+        # Minimal 1 penanda unik harus ada
+        return ($found -ge 1)
+    }
+
+    $folderDitemukan = $false
+
+    if ($portActive) {
+        # Port aktif tapi folder default tidak ada = mungkin install di folder custom
+        Write-INFO "Port 7008 aktif - mencari folder instalasi dari proses Apache..."
+
+        # Ambil PID yang listen di port 7008, lalu path executable-nya
+        try {
+            $conn = Get-NetTCPConnection -LocalPort 7008 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($conn) {
+                $procPath = (Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue).Path
+                if ($procPath) {
+                    Write-INFO "Proses ditemukan: $procPath"
+                    # httpd.exe biasanya di <basePath>\apache\bin\httpd.exe atau <basePath>\bin\httpd.exe
+                    # Naik folder sampai ketemu struktur Synchronizer
+                    $candidate = Split-Path $procPath -Parent
+                    for ($i = 0; $i -lt 5; $i++) {
+                        $candidate = Split-Path $candidate -Parent
+                        if ([string]::IsNullOrWhiteSpace($candidate)) { break }
+                        if (Test-IsSynchronizer $candidate) {
+                            $basePath = $candidate
+                            $folderDitemukan = $true
+                            Write-OK "Folder Synchronizer terverifikasi: $basePath"
+                            break
+                        }
+                    }
+                }
+            }
+        } catch {
+            Write-WARN "Gagal deteksi otomatis dari proses: $_"
+        }
+
+        # Kalau auto-detect gagal, scan drive umum
+        if (-not $folderDitemukan) {
+            Write-INFO "Auto-detect dari proses gagal, memindai lokasi umum..."
+            $commonPaths = @(
+                "C:\synchronizer", "D:\synchronizer", "E:\synchronizer",
+                "C:\e-Rapor SMK Synchronizer", "D:\e-Rapor SMK Synchronizer",
+                "$env:ProgramFiles\synchronizer", "${env:ProgramFiles(x86)}\synchronizer"
+            )
+            foreach ($p in $commonPaths) {
+                if (Test-IsSynchronizer $p) {
+                    $basePath = $p
+                    $folderDitemukan = $true
+                    Write-OK "Folder Synchronizer ditemukan: $basePath"
+                    break
+                }
+            }
+        }
+
+        # Kalau tetap tidak ketemu, baru tanya manual (last resort)
+        if (-not $folderDitemukan) {
+            Write-WARN "Folder Synchronizer tidak terdeteksi otomatis."
+            $inputPath = Read-Host "  Masukkan path folder instalasi Synchronizer (atau ketik SKIP untuk install ulang)"
+            if ($inputPath -eq "SKIP" -or $inputPath -eq "skip") {
+                $portActive = $false  # paksa masuk ke jalur install
+            } elseif (Test-IsSynchronizer $inputPath) {
+                $basePath = $inputPath
+                $folderDitemukan = $true
+                Write-OK "Folder Synchronizer terverifikasi: $basePath"
+            } else {
+                Write-ERR "Folder '$inputPath' bukan instalasi Synchronizer yang valid."
+                Write-WARN "Tidak ditemukan penanda (data_sync.json / updater.bat)."
+                pause
+                exit
+            }
+        }
+
+        if ($folderDitemukan) {
+            $folderAda = $true
+        }
+    }
+
+    if (-not $portActive -and -not $folderDitemukan) {
         # Port tidak aktif = belum install sama sekali
         Write-INFO "Port 7008 tidak aktif - Synchronizer belum terinstall."
         Write-INFO "Memulai proses instalasi otomatis..."
