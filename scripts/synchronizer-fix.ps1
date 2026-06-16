@@ -741,10 +741,10 @@ if (Test-Path $datawebPath) {
 
         try {
             if ($composerCmd -eq "phar") {
-                # Clear cache & paksa unduh ulang meskipun di lock file terbaca tidak berubah
-                $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" clear-cache && `"$phpExe`" `"$composerPhar`" install --refresh --no-interaction --optimize-autoloader --no-progress`""
+                # Menggunakan kombinasi clear-cache dan install standar (tanpa flag --refresh yang tidak didukung)
+                $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" clear-cache && `"$phpExe`" `"$composerPhar`" install --no-interaction --optimize-autoloader --no-progress`""
             } else {
-                $cmdLine = "/c composer clear-cache && composer install --refresh --no-interaction --optimize-autoloader --no-progress"
+                $cmdLine = "/c composer clear-cache && composer install --no-interaction --optimize-autoloader --no-progress"
             }
             $cp = Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLine `
                 -WorkingDirectory $datawebPath -Wait -NoNewWindow -PassThru
@@ -758,15 +758,15 @@ if (Test-Path $datawebPath) {
         if (Test-Path $vendorCheck) {
             Write-OK "Composer install selesai, vendor lengkap."
         } else {
-            Write-WARN "Vendor belum lengkap, mencoba fallback composer update..."
+            Write-WARN "Vendor belum lengkap atau file penanda hilang, menjalankan composer update..."
             try {
                 if ($composerCmd -eq "phar") {
                     $cmdLineFallback = "/c `"`"$phpExe`" `"$composerPhar`" update --no-interaction --optimize-autoloader --no-progress`""
                 } else {
                     $cmdLineFallback = "/c composer update --no-interaction --optimize-autoloader --no-progress"
                 }
-                Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLineFallback `
-                    -WorkingDirectory $datawebPath -Wait -NoNewWindow
+                $cpFallback = Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLineFallback `
+                    -WorkingDirectory $datawebPath -Wait -NoNewWindow -PassThru
             } catch {}
             
             if (Test-Path $vendorCheck) {
