@@ -126,7 +126,7 @@ function Show-Banner {
         $mid    = $CH.SIDE
         Write-Host "  $top" -ForegroundColor Cyan
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
-        Write-Host "  $mid   SYNCHRONIZER FIX TOOL  v5.7 ANIMATED  $mid" -ForegroundColor White
+        Write-Host "  $mid   SYNCHRONIZER FIX TOOL  v6.0 ANIMATED  $mid" -ForegroundColor White
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
         Write-Host "  $mid          minicenter.my.id                $mid" -ForegroundColor DarkGray
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
@@ -138,7 +138,7 @@ function Show-Banner {
         Write-Host "  #       # #   #  ##  #    " -ForegroundColor Cyan
         Write-Host "  #####  #   #  #   #  #####" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "  SYNCHRONIZER FIX TOOL  v5.7 ANIMATED" -ForegroundColor White
+        Write-Host "  SYNCHRONIZER FIX TOOL  v6.0 ANIMATED" -ForegroundColor White
         Write-Host "  ======================================" -ForegroundColor DarkCyan
         Write-Host "  minicenter.my.id" -ForegroundColor DarkGray
         Write-Host "  ======================================" -ForegroundColor DarkCyan
