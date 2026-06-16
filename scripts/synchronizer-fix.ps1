@@ -130,16 +130,16 @@ function Show-Banner {
         $mid    = $CH.SIDE
         Write-Host "  $top" -ForegroundColor Cyan
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
-        Write-Host "  $mid   SYNCHRONIZER FIX TOOL  v6.0 ANIMATED  $mid" -ForegroundColor White
+        Write-Host "  $mid   SYNCHRONIZER FIX TOOL  v6.0 ANIMATED   $mid" -ForegroundColor White
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
-        Write-Host "  $mid          minicenter.my.id                $mid" -ForegroundColor DarkGray
+        Write-Host "  $mid           minicenter.my.id                $mid" -ForegroundColor DarkGray
         Write-Host "  $mid                                          $mid" -ForegroundColor Cyan
         Write-Host "  $bottom" -ForegroundColor Cyan
     } else {
         Write-Host "  #####  #   #  #   #  #####" -ForegroundColor Cyan
-        Write-Host "  #       # #   ##  #  #    " -ForegroundColor Cyan
+        Write-Host "  #       # #   ##  #  #     " -ForegroundColor Cyan
         Write-Host "  ####     #    # # #  ####  " -ForegroundColor Cyan
-        Write-Host "  #       # #   #  ##  #    " -ForegroundColor Cyan
+        Write-Host "  #       # #   #  ##  #     " -ForegroundColor Cyan
         Write-Host "  #####  #   #  #   #  #####" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "  SYNCHRONIZER FIX TOOL  v6.0 ANIMATED" -ForegroundColor White
@@ -246,9 +246,9 @@ function Show-Done {
     $line = $CH.LINE * 40
     Write-Host ""
     Write-Host "  $($CH.TL)$line$($CH.TR)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)   $($CH.CHECK)  SEMUA PERBAIKAN SELESAI!           $($CH.SIDE)" -ForegroundColor Green
-    Write-Host "  $($CH.SIDE)                                          $($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $  ($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)   $($CH.CHECK)  SEMUA PERBAIKAN SELESAI!           $  ($CH.SIDE)" -ForegroundColor Green
+    Write-Host "  $($CH.SIDE)                                          $  ($CH.SIDE)" -ForegroundColor Green
     Write-Host "  $($CH.BL)$line$($CH.BR)" -ForegroundColor Green
     Write-Host ""
 }
@@ -313,7 +313,6 @@ if (!$folderAda) {
     Write-Host ""
 
     # Fungsi: verifikasi folder benar-benar Synchronizer (bukan e-Rapor/Apache lain)
-    # Penanda unik: data_sync.json, SyncSession.php, atau folder updater
     function Test-IsSynchronizer {
         param([string]$path)
         if ([string]::IsNullOrWhiteSpace($path)) { return $false }
@@ -326,25 +325,20 @@ if (!$folderAda) {
         foreach ($m in $markers) {
             if (Test-Path $m) { $found++ }
         }
-        # Minimal 1 penanda unik harus ada
         return ($found -ge 1)
     }
 
     $folderDitemukan = $false
 
     if ($portActive) {
-        # Port aktif tapi folder default tidak ada = mungkin install di folder custom
         Write-INFO "Port 7008 aktif - mencari folder instalasi dari proses Apache..."
 
-        # Ambil PID yang listen di port 7008, lalu path executable-nya
         try {
             $conn = Get-NetTCPConnection -LocalPort 7008 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($conn) {
                 $procPath = (Get-Process -Id $conn.OwningProcess -ErrorAction SilentlyContinue).Path
                 if ($procPath) {
                     Write-INFO "Proses ditemukan: $procPath"
-                    # httpd.exe biasanya di <basePath>\apache\bin\httpd.exe atau <basePath>\bin\httpd.exe
-                    # Naik folder sampai ketemu struktur Synchronizer
                     $candidate = Split-Path $procPath -Parent
                     for ($i = 0; $i -lt 5; $i++) {
                         $candidate = Split-Path $candidate -Parent
@@ -362,7 +356,6 @@ if (!$folderAda) {
             Write-WARN "Gagal deteksi otomatis dari proses: $_"
         }
 
-        # Kalau auto-detect gagal, scan drive umum
         if (-not $folderDitemukan) {
             Write-INFO "Auto-detect dari proses gagal, memindai lokasi umum..."
             $commonPaths = @(
@@ -380,18 +373,18 @@ if (!$folderAda) {
             }
         }
 
-        # Kalau tetap tidak ketemu, baru tanya manual (last resort)
         if (-not $folderDitemukan) {
             Write-WARN "Folder Synchronizer tidak terdeteksi otomatis."
             $inputPath = Read-Host "  Masukkan path folder instalasi Synchronizer (atau ketik SKIP untuk install ulang)"
             if ($inputPath -eq "SKIP" -or $inputPath -eq "skip") {
-                $portActive = $false  # paksa masuk ke jalur install
+                $portActive = $false  
             } elseif (Test-IsSynchronizer $inputPath) {
                 $basePath = $inputPath
                 $folderDitemukan = $true
                 Write-OK "Folder Synchronizer terverifikasi: $basePath"
             } else {
-                Write-ERR "Folder '$inputPath' bukan instalasi Synchronizer yang valid."
+                $commandErr = "Folder '$inputPath' bukan instalasi Synchronizer yang valid."
+                Write-ERR $commandErr
                 Write-WARN "Tidak ditemukan penanda (data_sync.json / updater.bat)."
                 pause
                 exit
@@ -404,220 +397,201 @@ if (!$folderAda) {
     }
 
     if (-not $portActive -and -not $folderDitemukan) {
-        # Port tidak aktif = belum install sama sekali
         Write-INFO "Port 7008 tidak aktif - Synchronizer belum terinstall."
         Write-INFO "Memulai proses instalasi otomatis..."
         Write-Host ""
 
-    # --- Auto Download + Silent Install ---
-    $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
-    $installerPath = "$env:TEMP\e-Rapor_SMK_Synchronizer.exe"
+        $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
+        $installerPath = "$env:TEMP\e-Rapor_SMK_Synchronizer.exe"
 
-    Write-Host ""
-    Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
-    Write-Host "  $($CH.SIDE)  Synchronizer belum terinstall.                        $($CH.SIDE)" -ForegroundColor White
-    Write-Host "  $($CH.SIDE)  Akan didownload dan diinstall otomatis...             $($CH.SIDE)" -ForegroundColor Cyan
-    Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
-    Write-Host ""
+        Write-Host ""
+        Write-Host "  $($CH.TL)$($CH.LINE * 52)$($CH.TR)" -ForegroundColor Cyan
+        Write-Host "  $($CH.SIDE)  Synchronizer belum terinstall.                        $($CH.SIDE)" -ForegroundColor White
+        Write-Host "  $($CH.SIDE)  Akan didownload dan diinstall otomatis...             $($CH.SIDE)" -ForegroundColor Cyan
+        Write-Host "  $($CH.BL)$($CH.LINE * 52)$($CH.BR)" -ForegroundColor Cyan
+        Write-Host ""
 
-    # -----------------------------------------------
-    # PREREQUISITES - Install sebelum installer utama
-    # -----------------------------------------------
-    Write-Host "  $($CH.ARROW) Memeriksa Prerequisites..." -ForegroundColor Cyan
-    Write-Host ""
+        Write-Host "  $($CH.ARROW) Memeriksa Prerequisites..." -ForegroundColor Cyan
+        Write-Host ""
 
-    # Pastikan Chocolatey tersedia untuk install prereqs
-    if (!(Test-Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
-        Write-INFO "Menginstal Chocolatey untuk prerequisites..."
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-        $env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
-    }
-    $chocoExe = "C:\ProgramData\chocolatey\bin\choco.exe"
-
-    # Daftar prerequisites
-    $prereqs = @(
-        @{
-            Name    = "Visual C++ Redistributable 2013 (x86)"
-            Choco   = "vcredist2013"
-            Check   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
-            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
-        },
-        @{
-            Name    = "Visual C++ Redistributable 2015-2022 (x86)"
-            Choco   = "vcredist140"
-            Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
-            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
-        },
-        @{
-            Name    = "Visual C++ Redistributable 2015-2022 (x64)"
-            Choco   = "vcredist140"
-            Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
-            Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
-        },
-        @{
-            Name    = ".NET Framework 4.8"
-            Choco   = "dotnetfx"
-            Check   = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
-            MinVal  = 528040
-            ValName = "Release"
-        },
-        @{
-            Name    = "WebView2 Runtime"
-            Choco   = "microsoft-edge-webview2-runtime"
-            Check   = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-            Check64 = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-        },
-        @{
-            Name    = "Git"
-            Choco   = "git"
-            Check   = "HKLM:\SOFTWARE\GitForWindows"
-            Check64 = "HKLM:\SOFTWARE\WOW6432Node\GitForWindows"
-        },
-        @{
-            Name      = "Composer"
-            Choco     = "composer"
-            CheckFile = "C:\ProgramData\ComposerSetup\bin\composer.bat"
+        if (!(Test-Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
+            Write-INFO "Menginstal Chocolatey untuk prerequisites..."
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            $env:Path = "C:\ProgramData\chocolatey\bin;" + $env:Path
         }
-    )
+        $chocoExe = "C:\ProgramData\chocolatey\bin\choco.exe"
 
-    foreach ($p in $prereqs) {
-        $installed = $false
-        if ($p.CheckFile) {
-            # Cek berdasarkan keberadaan file (mis. Composer)
-            if (Test-Path $p.CheckFile) { $installed = $true }
-            # Cek juga apakah composer ada di PATH
-            elseif (Get-Command composer -ErrorAction SilentlyContinue) { $installed = $true }
-        } elseif ($p.MinVal) {
-            try {
-                $val = (Get-ItemProperty -Path $p.Check -Name $p.ValName -ErrorAction Stop).$($p.ValName)
-                if ($val -ge $p.MinVal) { $installed = $true }
-            } catch { $installed = $false }
-        } else {
-            if (Test-Path $p.Check) { $installed = $true }
-            elseif ($p.Check64 -and (Test-Path $p.Check64)) { $installed = $true }
-        }
+        $prereqs = @(
+            @{
+                Name    = "Visual C++ Redistributable 2013 (x86)"
+                Choco   = "vcredist2013"
+                Check   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
+                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{13A4EE12-23EA-3371-91EE-EFB36DDFFF3E}"
+            },
+            @{
+                Name    = "Visual C++ Redistributable 2015-2022 (x86)"
+                Choco   = "vcredist140"
+                Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+            },
+            @{
+                Name    = "Visual C++ Redistributable 2015-2022 (x64)"
+                Choco   = "vcredist140"
+                Check   = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+                Check64 = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+            },
+            @{
+                Name    = ".NET Framework 4.8"
+                Choco   = "dotnetfx"
+                Check   = "HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full"
+                MinVal  = 528040
+                ValName = "Release"
+            },
+            @{
+                Name    = "WebView2 Runtime"
+                Choco   = "microsoft-edge-webview2-runtime"
+                Check   = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                Check64 = "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+            },
+            @{
+                Name    = "Git"
+                Choco   = "git"
+                Check   = "HKLM:\SOFTWARE\GitForWindows"
+                Check64 = "HKLM:\SOFTWARE\WOW6432Node\GitForWindows"
+            },
+            @{
+                Name      = "Composer"
+                Choco     = "composer"
+                CheckFile = "C:\ProgramData\ComposerSetup\bin\composer.bat"
+            }
+        )
 
-        if ($installed) {
-            Write-OK "$($p.Name) sudah terinstall, dilewati."
-        } else {
-            Write-INFO "$($p.Name) belum ada, menginstall..."
-            try {
-                $proc = Start-Process -FilePath $chocoExe `
-                    -ArgumentList "install $($p.Choco) -y --no-progress --ignore-checksums" `
-                    -Wait -PassThru -NoNewWindow
-                if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
-                    Write-OK "$($p.Name) berhasil diinstall."
-                    if ($proc.ExitCode -eq 3010) {
-                        Write-WARN "Reboot disarankan setelah selesai untuk $($p.Name)."
+        foreach ($p in $prereqs) {
+            $installed = $false
+            if ($p.CheckFile) {
+                if (Test-Path $p.CheckFile) { $installed = $true }
+                elseif (Get-Command composer -ErrorAction SilentlyContinue) { $installed = $true }
+            } elseif ($p.MinVal) {
+                try {
+                    $val = (Get-ItemProperty -Path $p.Check -Name $p.ValName -ErrorAction Stop).$($p.ValName)
+                    if ($val -ge $p.MinVal) { $installed = $true }
+                } catch { $installed = $false }
+            } else {
+                if (Test-Path $p.Check) { $installed = $true }
+                elseif ($p.Check64 -and (Test-Path $p.Check64)) { $installed = $true }
+            }
+
+            if ($installed) {
+                Write-OK "$($p.Name) sudah terinstall, dilewati."
+            } else {
+                Write-INFO "$($p.Name) belum ada, menginstall..."
+                try {
+                    $proc = Start-Process -FilePath $chocoExe `
+                        -ArgumentList "install $($p.Choco) -y --no-progress --ignore-checksums" `
+                        -Wait -PassThru -NoNewWindow
+                    if ($proc.ExitCode -eq 0 -or $proc.ExitCode -eq 3010) {
+                        Write-OK "$($p.Name) berhasil diinstall."
+                        if ($proc.ExitCode -eq 3010) {
+                            Write-WARN "Reboot disarankan setelah selesai untuk $($p.Name)."
+                        }
+                    } else {
+                        Write-WARN "$($p.Name) exit code: $($proc.ExitCode) -- lanjutkan."
                     }
-                } else {
-                    Write-WARN "$($p.Name) exit code: $($proc.ExitCode) -- lanjutkan."
+                } catch {
+                    Write-WARN "Gagal install $($p.Name): $_ -- dilanjutkan."
+                }
+            }
+        }
+
+        Write-Host ""
+        Write-OK "Pemeriksaan prerequisites selesai."
+        Write-Host ""
+
+        Write-INFO "Mengunduh installer dari GitHub..."
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        $dlSukses = $false
+
+        try {
+            Write-INFO "Mengunduh via BITS..."
+            Import-Module BitsTransfer -ErrorAction Stop
+            Start-BitsTransfer -Source $installerUrl -Destination $installerPath -DisplayName "Synchronizer Installer" -ErrorAction Stop
+            $dlSukses = $true
+            Write-OK "Download via BITS selesai!"
+        } catch {
+            Write-WARN "BITS gagal: $_"
+        }
+
+        if (-not $dlSukses) {
+            try {
+                Write-INFO "Mencoba via Invoke-WebRequest..."
+                $ProgressPreference = 'Continue'
+                Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
+                $dlSukses = $true
+                Write-OK "Download via Invoke-WebRequest selesai!"
+            } catch {
+                Write-WARN "Invoke-WebRequest gagal: $_"
+            }
+        }
+
+        if (-not $dlSukses) {
+            try {
+                Write-INFO "Mencoba via curl..."
+                $curlExe = "$env:SystemRoot\System32\curl.exe"
+                if (Test-Path $curlExe) {
+                    & $curlExe -L -o $installerPath $installerUrl --progress-bar
+                    if (Test-Path $installerPath) {
+                        $dlSukses = $true
+                        Write-OK "Download via curl selesai!"
+                    }
                 }
             } catch {
-                Write-WARN "Gagal install $($p.Name): $_ -- dilanjutkan."
+                Write-WARN "curl gagal: $_"
             }
         }
-    }
 
-    Write-Host ""
-    Write-OK "Pemeriksaan prerequisites selesai."
-    Write-Host ""
-
-
-    # Download dengan progress bar real
-    Write-INFO "Mengunduh installer dari GitHub..."
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-    $dlSukses = $false
-
-    # --- Metode 1: BITS Transfer (paling andal, ada progress, handle redirect) ---
-    try {
-        Write-INFO "Mengunduh via BITS..."
-        Import-Module BitsTransfer -ErrorAction Stop
-        Start-BitsTransfer -Source $installerUrl -Destination $installerPath -DisplayName "Synchronizer Installer" -ErrorAction Stop
-        $dlSukses = $true
-        Write-OK "Download via BITS selesai!"
-    } catch {
-        Write-WARN "BITS gagal: $_"
-    }
-
-    # --- Metode 2: Invoke-WebRequest (fallback, handle redirect GitHub otomatis) ---
-    if (-not $dlSukses) {
-        try {
-            Write-INFO "Mencoba via Invoke-WebRequest..."
-            $ProgressPreference = 'Continue'
-            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
-            $dlSukses = $true
-            Write-OK "Download via Invoke-WebRequest selesai!"
-        } catch {
-            Write-WARN "Invoke-WebRequest gagal: $_"
+        if (-not $dlSukses) {
+            Write-ERR "Semua metode download gagal."
+            Write-WARN "Cek koneksi internet atau link berikut secara manual:"
+            Write-WARN "$installerUrl"
+            pause
+            exit
         }
-    }
 
-    # --- Metode 3: curl.exe (Windows 10+ punya curl bawaan) ---
-    if (-not $dlSukses) {
-        try {
-            Write-INFO "Mencoba via curl..."
-            $curlExe = "$env:SystemRoot\System32\curl.exe"
-            if (Test-Path $curlExe) {
-                & $curlExe -L -o $installerPath $installerUrl --progress-bar
-                if (Test-Path $installerPath) {
-                    $dlSukses = $true
-                    Write-OK "Download via curl selesai!"
-                }
-            }
-        } catch {
-            Write-WARN "curl gagal: $_"
+        if (!(Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1MB) {
+            Write-ERR "File installer tidak valid atau tidak lengkap."
+            exit
         }
-    }
+        Write-OK "File installer siap: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB)"
 
-    # Kalau semua metode gagal
-    if (-not $dlSukses) {
-        Write-ERR "Semua metode download gagal."
-        Write-WARN "Cek koneksi internet atau link berikut secara manual:"
-        Write-WARN "$installerUrl"
-        pause
-        exit
-    }
+        Write-Host ""
+        Write-Typewriter "  Menjalankan silent install..." -Color Yellow -Delay 14
+        Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
+        Write-Host ""
 
-    # Verifikasi file hasil download
-    if (!(Test-Path $installerPath) -or (Get-Item $installerPath).Length -lt 1MB) {
-        Write-ERR "File installer tidak valid atau tidak lengkap."
-        exit
-    }
-    Write-OK "File installer siap: $installerPath ($([math]::Round((Get-Item $installerPath).Length / 1MB, 1)) MB)"
+        $installProc = Start-Process -FilePath $installerPath `
+            -ArgumentList "/exenoui /qn AI_PREREQ_CHAINER=0 REBOOT=ReallySuppress" `
+            -Wait -PassThru
 
-    # Silent install
-    Write-Host ""
-    Write-Typewriter "  Menjalankan silent install..." -Color Yellow -Delay 14
-    Write-INFO "Proses ini mungkin memerlukan beberapa menit. Mohon tunggu..."
-    Write-Host ""
+        if ($installProc.ExitCode -eq 0) {
+            Write-OK "Instalasi selesai! (Exit code: 0)"
+        } else {
+            Write-WARN "Installer selesai dengan exit code: $($installProc.ExitCode)"
+            Write-INFO "Exit code non-zero tidak selalu berarti gagal pada installer ini."
+        }
 
-    $installProc = Start-Process -FilePath $installerPath `
-        -ArgumentList "/exenoui /qn AI_PREREQ_CHAINER=0 REBOOT=ReallySuppress" `
-        -Wait -PassThru
-
-    if ($installProc.ExitCode -eq 0) {
-        Write-OK "Instalasi selesai! (Exit code: 0)"
-    } else {
-        Write-WARN "Installer selesai dengan exit code: $($installProc.ExitCode)"
-        Write-INFO "Exit code non-zero tidak selalu berarti gagal pada installer ini."
-    }
-
-    # Verifikasi hasil install
-    Start-Sleep -Seconds 2
-    if (Test-Path $basePath) {
-        Write-OK "Folder $basePath berhasil dibuat. Instalasi sukses!"
-        # Hapus file installer temp
-        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-    } else {
-        Write-ERR "Folder $basePath tidak ditemukan setelah install."
-        Write-WARN "Instalasi mungkin gagal. Coba jalankan installer manual:"
-        Write-WARN "$installerUrl"
-        pause
-        exit
-    }
-    } # end else (port tidak aktif)
+        Start-Sleep -Seconds 2
+        if (Test-Path $basePath) {
+            Write-OK "Folder $basePath berhasil dibuat. Instalasi sukses!"
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-ERR "Folder $basePath tidak ditemukan setelah install."
+            Write-WARN "Instalasi mungkin gagal. Coba jalankan installer manual:"
+            Write-WARN "$installerUrl"
+            pause
+            exit
+        }
+    } 
 } else {
     Write-OK "Folder ditemukan: $basePath"
 }
@@ -691,7 +665,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-OK "safe.directory ditambahkan."
 }
 $env:GIT_TERMINAL_PROMPT = "0"
-$env:GIT_ASK_YESNO      = "false"
+$env:GIT_ASK_YESNO       = "false"
 
 # =============================================
 # LANGKAH 5
@@ -755,7 +729,6 @@ if (Test-Path "$datawebPath\vendor") {
     }
 }
 
-# Jalankan composer install LENGKAP (bukan composer.bat bawaan yang tidak lengkap)
 if (Test-Path $datawebPath) {
     Set-Location $datawebPath
 
@@ -766,16 +739,12 @@ if (Test-Path $datawebPath) {
         # Set environment agar composer pakai PHP Synchronizer
         $env:PATH = "$basePath\php;" + $env:PATH
 
-        # PENTING: pakai Start-Process + cmd /c, BUKAN operator &
-        # Composer menulis progress ke stderr; kalau pakai & ... 2>&1 saat irm|iex,
-        # PowerShell menganggapnya NativeCommandError dan menghentikan script.
         try {
             if ($composerCmd -eq "phar") {
-                # Pakai composer.phar dengan PHP bundled
-                $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" install --no-interaction --optimize-autoloader --no-progress`""
+                # Clear cache & paksa unduh ulang meskipun di lock file terbaca tidak berubah
+                $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" clear-cache && `"$phpExe`" `"$composerPhar`" install --refresh --no-interaction --optimize-autoloader --no-progress`""
             } else {
-                # Pakai composer global
-                $cmdLine = "/c composer install --no-interaction --optimize-autoloader --no-progress"
+                $cmdLine = "/c composer clear-cache && composer install --refresh --no-interaction --optimize-autoloader --no-progress"
             }
             $cp = Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLine `
                 -WorkingDirectory $datawebPath -Wait -NoNewWindow -PassThru
@@ -789,25 +758,25 @@ if (Test-Path $datawebPath) {
         if (Test-Path $vendorCheck) {
             Write-OK "Composer install selesai, vendor lengkap."
         } else {
-            Write-WARN "Vendor belum lengkap, mencoba composer.bat bawaan..."
-            if (Test-Path "$basePath\updater\composer.bat") {
-                Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" `
-                    -WorkingDirectory "$basePath\updater" -Wait -NoNewWindow
-            }
-            # Cek ulang setelah composer.bat
+            Write-WARN "Vendor belum lengkap, mencoba fallback composer update..."
+            try {
+                if ($composerCmd -eq "phar") {
+                    $cmdLineFallback = "/c `"`"$phpExe`" `"$composerPhar`" update --no-interaction --optimize-autoloader --no-progress`""
+                } else {
+                    $cmdLineFallback = "/c composer update --no-interaction --optimize-autoloader --no-progress"
+                }
+                Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLineFallback `
+                    -WorkingDirectory $datawebPath -Wait -NoNewWindow
+            } catch {}
+            
             if (Test-Path $vendorCheck) {
-                Write-OK "Vendor sekarang lengkap (via composer.bat)."
+                Write-OK "Vendor sekarang lengkap (via composer update)."
             } else {
                 Write-WARN "Vendor masih belum lengkap. Mungkin perlu cek koneksi internet."
             }
         }
     } else {
-        # Fallback: tidak ada composer terdeteksi, pakai composer.bat bawaan
-        Write-WARN "Composer tidak terdeteksi, memakai composer.bat bawaan."
-        if (Test-Path "$basePath\updater\composer.bat") {
-            Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" `
-                -WorkingDirectory "$basePath\updater" -Wait -NoNewWindow
-        }
+        Write-WARN "Composer tidak terdeteksi."
     }
 }
 
@@ -882,7 +851,6 @@ Write-Step "9" "Menjalankan Apache (Web Server)"
 
 $apacheJalan = $false
 
-# Fungsi cek apakah port 7008 sudah listen
 function Test-PortListening {
     param([int]$port = 7008)
     try {
@@ -891,13 +859,11 @@ function Test-PortListening {
     } catch { return $false }
 }
 
-# Cek dulu apakah sudah jalan
 if (Test-PortListening 7008) {
     Write-OK "Apache sudah berjalan di port 7008."
     $apacheJalan = $true
 }
 
-# --- Metode 1: Start Windows Service Apache ---
 if (-not $apacheJalan) {
     Write-INFO "Mencari service Apache..."
     $svc = Get-Service -ErrorAction SilentlyContinue | Where-Object {
@@ -924,7 +890,6 @@ if (-not $apacheJalan) {
     }
 }
 
-# --- Metode 2: Jalankan httpd.bat ---
 if (-not $apacheJalan) {
     $httpdBat = "$basePath\httpd.bat"
     if (Test-Path $httpdBat) {
@@ -942,9 +907,7 @@ if (-not $apacheJalan) {
     }
 }
 
-# --- Metode 3: Jalankan apache_start.bat ---
 if (-not $apacheJalan) {
-    # Cari apache_start.bat di beberapa lokasi umum
     $startBatCandidates = @(
         "$basePath\apache_start.bat",
         "$basePath\apache\bin\apache_start.bat",
@@ -968,14 +931,11 @@ if (-not $apacheJalan) {
     }
 }
 
-# --- Metode 4: Jalankan httpd.exe -k start langsung ---
 if (-not $apacheJalan) {
-    # Cari httpd.exe di struktur Synchronizer
     $httpdExe = Get-ChildItem -Path $basePath -Filter "httpd.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($httpdExe) {
         Write-INFO "Menjalankan httpd.exe langsung: $($httpdExe.FullName)"
         try {
-            # Coba install + start sebagai service dulu
             Start-Process -FilePath $httpdExe.FullName -ArgumentList "-k install" -Wait -WindowStyle Hidden -ErrorAction SilentlyContinue
             Start-Process -FilePath $httpdExe.FullName -ArgumentList "-k start" -WindowStyle Hidden -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 4
@@ -989,7 +949,6 @@ if (-not $apacheJalan) {
     }
 }
 
-# Hasil akhir
 if ($apacheJalan) {
     Write-OK "Web server aktif. Aplikasi siap diakses di http://localhost:7008"
 } else {
