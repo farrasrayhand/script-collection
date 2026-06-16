@@ -305,10 +305,25 @@ $folderAda = Test-Path $basePath
 Write-Step "1" "Validasi Folder Instalasi"
 
 if (!$folderAda) {
-    Write-WARN "Folder $basePath tidak ditemukan."
+    Write-WARN "Folder default $basePath tidak ditemukan."
     Write-Host ""
-    Write-INFO "Synchronizer belum terinstall. Memulai proses instalasi otomatis..."
-    Write-Host ""
+
+    if ($portActive) {
+        # Port aktif tapi folder default tidak ada = install di folder custom
+        Write-INFO "Port 7008 aktif - kemungkinan Synchronizer terinstall di folder lain."
+        $basePath = Read-Host "  Masukkan path folder instalasi Synchronizer"
+        if (!(Test-Path $basePath)) {
+            Write-ERR "Folder '$basePath' tidak ditemukan. Script dihentikan."
+            pause
+            exit
+        }
+        Write-OK "Menggunakan folder: $basePath"
+        $folderAda = $true
+    } else {
+        # Port tidak aktif = belum install sama sekali
+        Write-INFO "Port 7008 tidak aktif - Synchronizer belum terinstall."
+        Write-INFO "Memulai proses instalasi otomatis..."
+        Write-Host ""
 
     # --- Auto Download + Silent Install ---
     $installerUrl  = "https://github.com/farrasrayhand/script-collection/releases/download/v.2/e-Rapor.SMK.Synchronizer.exe"
@@ -491,8 +506,10 @@ if (!$folderAda) {
         Write-ERR "Folder $basePath tidak ditemukan setelah install."
         Write-WARN "Coba install manual: $installerUrl"
         Start-Process $installerUrl
+        pause
         exit
     }
+    } # end else (port tidak aktif)
 } else {
     Write-OK "Folder ditemukan: $basePath"
 }
