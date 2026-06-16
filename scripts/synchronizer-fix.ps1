@@ -507,48 +507,56 @@ if (!$folderAda) {
 
     # Download dengan progress bar real
     Write-INFO "Mengunduh installer dari GitHub..."
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+    $dlSukses = $false
+
+    # --- Metode 1: BITS Transfer (paling andal, ada progress, handle redirect) ---
     try {
-        $wc = New-Object System.Net.WebClient
-        $global:dlDone = $false
-        $global:dlError = $null
-
-        # Progress handler
-        $wc.DownloadProgressChanged += {
-            param($s, $e)
-            $pct  = $e.ProgressPercentage
-            $recv = [math]::Round($e.BytesReceived / 1MB, 1)
-            $tot  = [math]::Round($e.TotalBytesToReceive / 1MB, 1)
-            $filled = [math]::Floor($pct / 100 * 30)
-            $bar  = $CH.BLOCK * $filled
-            $rest = $CH.EMPTY * (30 - $filled)
-            Write-Host "`r  [$bar$rest] $pct% ($recv MB / $tot MB)  " -NoNewline -ForegroundColor Cyan
-        }
-        $wc.DownloadFileCompleted += {
-            param($s, $e)
-            if ($e.Error) { $global:dlError = $e.Error.Message }
-            $global:dlDone = $true
-        }
-
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-        $wc.DownloadFileAsync([uri]$installerUrl, $installerPath)
-
-        $spin = @("-", "\", "|", "/")
-        $si = 0
-        while (-not $global:dlDone) {
-            # Spinner sebagai fallback kalau progress event tidak fire (misal server tidak kirim Content-Length)
-            Start-Sleep -Milliseconds 150
-            $si++
-        }
-        Write-Host "`r  [$($CH.BLOCK * 30)] 100% $($CH.CHECK) Download selesai!          " -ForegroundColor Green
-        Write-Host ""
-
-        if ($global:dlError) {
-            throw $global:dlError
-        }
+        Write-INFO "Mengunduh via BITS..."
+        Import-Module BitsTransfer -ErrorAction Stop
+        Start-BitsTransfer -Source $installerUrl -Destination $installerPath -DisplayName "Synchronizer Installer" -ErrorAction Stop
+        $dlSukses = $true
+        Write-OK "Download via BITS selesai!"
     } catch {
-        Write-ERR "Gagal download: $_"
-        Write-WARN "Coba download manual: $installerUrl"
-        Start-Process $installerUrl
+        Write-WARN "BITS gagal: $_"
+    }
+
+    # --- Metode 2: Invoke-WebRequest (fallback, handle redirect GitHub otomatis) ---
+    if (-not $dlSukses) {
+        try {
+            Write-INFO "Mencoba via Invoke-WebRequest..."
+            $ProgressPreference = 'Continue'
+            Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
+            $dlSukses = $true
+            Write-OK "Download via Invoke-WebRequest selesai!"
+        } catch {
+            Write-WARN "Invoke-WebRequest gagal: $_"
+        }
+    }
+
+    # --- Metode 3: curl.exe (Windows 10+ punya curl bawaan) ---
+    if (-not $dlSukses) {
+        try {
+            Write-INFO "Mencoba via curl..."
+            $curlExe = "$env:SystemRoot\System32\curl.exe"
+            if (Test-Path $curlExe) {
+                & $curlExe -L -o $installerPath $installerUrl --progress-bar
+                if (Test-Path $installerPath) {
+                    $dlSukses = $true
+                    Write-OK "Download via curl selesai!"
+                }
+            }
+        } catch {
+            Write-WARN "curl gagal: $_"
+        }
+    }
+
+    # Kalau semua metode gagal
+    if (-not $dlSukses) {
+        Write-ERR "Semua metode download gagal."
+        Write-WARN "Cek koneksi internet atau link berikut secara manual:"
+        Write-WARN "$installerUrl"
+        pause
         exit
     }
 
@@ -584,8 +592,8 @@ if (!$folderAda) {
         Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
     } else {
         Write-ERR "Folder $basePath tidak ditemukan setelah install."
-        Write-WARN "Coba install manual: $installerUrl"
-        Start-Process $installerUrl
+        Write-WARN "Instalasi mungkin gagal. Coba jalankan installer manual:"
+        Write-WARN "$installerUrl"
         pause
         exit
     }
