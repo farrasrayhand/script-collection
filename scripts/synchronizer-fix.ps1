@@ -2,7 +2,11 @@
 # Fitur: Unicode Auto-Detect, Animasi Terminal, Auto Elevation,
 # 		Auto Download + Install, Prerequisites Checker (VC++, .NET, WebView2)
 # Usage: powershell -ExecutionPolicy Bypass -Command "irm http://script.minicenter.my.id/scripts/synchronizer-fix.ps1 | iex"
-$ErrorActionPreference = "Stop"
+
+# PENTING: jangan pakai "Stop" global. Native command (composer/git/npm) sering
+# menulis info ke stderr, dan dengan "Stop" itu dianggap error fatal sehingga
+# script berhenti di tengah jalan. Pakai "Continue" + try-catch di titik kritis.
+$ErrorActionPreference = "Continue"
 $env:ComSpec = "$env:SystemRoot\System32\cmd.exe"
 
 # =============================================
@@ -718,7 +722,11 @@ if (Test-Path $phpIni) {
 Write-INFO "Memverifikasi ekstensi PHP..."
 Start-Sleep -Milliseconds 400
 if (Test-Path $phpExeDest) {
-    $phpModules = & $phpExeDest -m 2>&1
+    try {
+        $phpModules = & $phpExeDest -m 2>$null
+    } catch {
+        $phpModules = ""
+    }
     if ($phpModules -match "pdo_sqlite") { Write-OK "Ekstensi pdo_sqlite aktif." } else { Write-WARN "pdo_sqlite belum terdeteksi." }
     if ($phpModules -match "openssl")    { Write-OK "Ekstensi openssl aktif."    } else { Write-WARN "openssl belum terdeteksi."    }
 }
@@ -758,12 +766,22 @@ if (Test-Path $datawebPath) {
         # Set environment agar composer pakai PHP Synchronizer
         $env:PATH = "$basePath\php;" + $env:PATH
 
-        if ($composerCmd -eq "phar") {
-            # Pakai composer.phar dengan PHP bundled
-            & $phpExe $composerPhar install --no-interaction --optimize-autoloader --no-progress 2>&1 | Out-Host
-        } else {
-            # Pakai composer global
-            & composer install --no-interaction --optimize-autoloader --no-progress 2>&1 | Out-Host
+        # PENTING: pakai Start-Process + cmd /c, BUKAN operator &
+        # Composer menulis progress ke stderr; kalau pakai & ... 2>&1 saat irm|iex,
+        # PowerShell menganggapnya NativeCommandError dan menghentikan script.
+        try {
+            if ($composerCmd -eq "phar") {
+                # Pakai composer.phar dengan PHP bundled
+                $cmdLine = "/c `"`"$phpExe`" `"$composerPhar`" install --no-interaction --optimize-autoloader --no-progress`""
+            } else {
+                # Pakai composer global
+                $cmdLine = "/c composer install --no-interaction --optimize-autoloader --no-progress"
+            }
+            $cp = Start-Process -FilePath "$env:ComSpec" -ArgumentList $cmdLine `
+                -WorkingDirectory $datawebPath -Wait -NoNewWindow -PassThru
+            Write-INFO "Composer selesai (exit code: $($cp.ExitCode))"
+        } catch {
+            Write-WARN "Composer install bermasalah: $_"
         }
 
         # Verifikasi vendor benar-benar lengkap
@@ -771,18 +789,24 @@ if (Test-Path $datawebPath) {
         if (Test-Path $vendorCheck) {
             Write-OK "Composer install selesai, vendor lengkap."
         } else {
-            Write-WARN "Vendor mungkin belum lengkap, mencoba ulang dengan composer.bat bawaan..."
+            Write-WARN "Vendor belum lengkap, mencoba composer.bat bawaan..."
             if (Test-Path "$basePath\updater\composer.bat") {
-                Set-Location "$basePath\updater"
-                Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
+                Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" `
+                    -WorkingDirectory "$basePath\updater" -Wait -NoNewWindow
+            }
+            # Cek ulang setelah composer.bat
+            if (Test-Path $vendorCheck) {
+                Write-OK "Vendor sekarang lengkap (via composer.bat)."
+            } else {
+                Write-WARN "Vendor masih belum lengkap. Mungkin perlu cek koneksi internet."
             }
         }
     } else {
         # Fallback: tidak ada composer terdeteksi, pakai composer.bat bawaan
         Write-WARN "Composer tidak terdeteksi, memakai composer.bat bawaan."
         if (Test-Path "$basePath\updater\composer.bat") {
-            Set-Location "$basePath\updater"
-            Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" -Wait -NoNewWindow
+            Start-Process -FilePath "$env:ComSpec" -ArgumentList "/c composer.bat" `
+                -WorkingDirectory "$basePath\updater" -Wait -NoNewWindow
         }
     }
 }
